@@ -1,13 +1,13 @@
 #ifndef GRID_HPP_INCLUDED
 #define GRID_HPP_INCLUDED
 
-#include <string>
+
 #include <chrono>
-#include <string_view>
 #include <memory>
 #include <vector>
 #include <utility>
 #include <random>
+#include <string_view>
 #include <set>
 #include <map>
 
@@ -17,22 +17,21 @@
 namespace nb_s {
 
 class Grid {
-public:
 
+public:
     using steady_clock_tp = std::chrono::steady_clock::time_point;
     using set_pair_t = std::set<std::pair<int, int>>;
 
 public:
-
     Grid(Grid const&) = delete;
     Grid& operator=(Grid const&) = delete;
 
 
 public:
-    Grid(int width, int height, std::string s);
+    Grid(int width, int height, std::string_view s);
 
     enum struct SitRep {
-        CONTRACDITION_FOUND,
+        CONTRADICTION_FOUND,
         SOLUTION_FOUND,
         KEEP_GOING,
         CANNOT_PROCEED,
@@ -49,12 +48,11 @@ private:
         BLACK = -1,
     };
 
-    namespace detail {
+
 
     class Region {
 
     public:
-
         Region(State const state, set_pair_t const& unknowns, int const x, int const y);
         bool is_white() const;
         bool is_black() const;
@@ -89,9 +87,9 @@ private:
 
 
     };
-    }//End of detail namespace.
 
-    using cache_map_t = std::map<std::shared_ptr<detail::Region>, set_pair_t>;
+
+    using cache_map_t = std::map<std::shared_ptr<Region>, set_pair_t>;
 
 
     int m_width;
@@ -102,19 +100,20 @@ private:
 
     //m_cells[x][y].first is the state of the cell.
     //m_cells[x][y].second is the region of the cell.
-    std::vector<std::vector<std::pair<State, std::shared_ptr<detail::Region>>>> m_cells;
+    std::vector<std::vector<std::pair<State, std::shared_ptr<Region>>>> m_cells;
+
 
     //Initially is KEEP_GOING.
-    SitRep m_sitRep;
-    std::set<std::shared_ptr<detail::Region>> m_regions;
+    SitRep m_sitRep{SitRep::KEEP_GOING};
+    std::set<std::shared_ptr<Region>> m_regions;
 
     //This stores the output to be generated and converts into HTML.
     std::vector<std::tuple<std::string, std::vector<std::vector<State>>,
-    set_pair_t, steady_clock_tp, int, set_pair_t>> m_output;
+        set_pair_t, steady_clock_tp, int, set_pair_t>> m_output;
 
 
     std::mt19937 m_eng;
-    std::string m_grid;
+
 
     bool analyze_complete_islands(bool verbose);
     bool analyze_single_liberty(bool verbose);
@@ -128,14 +127,14 @@ private:
     bool valid(int x, int y);
     State& cell(int x, int y);
     State const& cell(int x, int y) const;
-    std::shared_ptr<detail::Region>& region(int x, int y);
-    std::shared_ptr<detail::Region> const& region(int x, int y) const;
+    std::shared_ptr<Region>& region(int x, int y);
+    std::shared_ptr<Region> const& region(int x, int y) const;
 
     void print(std::string const& s, set_pair_t const& updated = {},
                int failed_guesses = 0, set_pair_t const& failed_coords = {});
 
     bool process(bool verbose, set_pair_t const& mark_as_black,
-                 set_pair_t const& mark_as_white, std::string const& s);
+                 set_pair_t const& mark_as_white, std::string_view s);
 
     template <typename F>
     void for_valid_neighbors(int x, int y, F f) const;
@@ -145,36 +144,49 @@ private:
 
     void add_region(int x, int y);
     void mark(int x, int y);
-    void fuse_regions(std::shared_ptr<detail::Region> r1, std::shared_ptr<detail::Region>r2);
+    void fuse_regions(std::shared_ptr<Region> r1, std::shared_ptr<Region>r2);
 
     bool impossibly_big_white_region(int n) const;
     bool unreachable(int x_root, int y_root, set_pair_t discovered = {});
-    bool confined(std::shared_ptr<detail::Region>& r, cache_map_t& cache, set_pair_t const& verboten = {});
+    bool confined(std::shared_ptr<Region>& r, cache_map_t& cache, set_pair_t const& verboten = {});
 
     bool detect_contradiction(bool verbose, cache_map_t& cache);
 
 
 
 };
-//Helper function for formatting time and print it to std::ostream.
+//Helper machinery for formatting time and print it to std::ostream.
 std::string format_time(Grid::steady_clock_tp const start, Grid::steady_clock_tp const finish);
 
 
-//Templates member functions.
-
+//Templates member functions definition.
 template <typename It>
-void Grid::detail::Region::insert(It first, It last) {
+void Grid::Region::insert(It first, It last) {
     m_coords.insert(first, last);
 }
 
 template <typename It>
-void Grid::detail::Region::unk_insert(It first, It last) {
+void Grid::Region::unk_insert(It first, It last) {
     m_unknowns.insert(first, last);
 }
 
+//Extract neighbors that are orthogonal and not
+//off the grid bound.
 template <typename F>
 void Grid::for_valid_neighbors(int x, int y, F f) const {
 
+    if(x > 0) {
+        f(x - 1, y);
+    }
+    if(x + 1 < m_width) {
+        f(x + 1, y);
+    }
+    if(y > 0) {
+        f(x, y - 1);
+    }
+    if(y + 1 < m_height){
+        f(x, y + 1);
+    }
 }
 
 }
