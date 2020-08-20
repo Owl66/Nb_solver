@@ -452,7 +452,7 @@ bool Grid::unreachable(int x_root, int y_root, set_pair_t discovered) {
     std::queue<std::tuple<int, int, int>> q;
 
     q.push(std::make_tuple(x_root, y_root, 1));
-    discovered.insert(std::make_pair(x_root, y_root_));
+    discovered.insert(std::make_pair(x_root, y_root));
 
 
 
