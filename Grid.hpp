@@ -8,22 +8,23 @@
 #include <utility>
 #include <random>
 #include <string_view>
+#include <iostream>
 #include <set>
 #include <map>
 
 
 
 
-namespace nb_s {
+namespace nb {
 
 class Grid {
 
 public:
-    using steady_clock_tp = std::chrono::steady_clock::time_point;
+    using steady_clock_tp_t = std::chrono::steady_clock::time_point;
     using set_pair_t = std::set<std::pair<int, int>>;
 
 public:
-    Grid(Grid const&) = delete;
+    Grid(Grid const&);
     Grid& operator=(Grid const&) = delete;
 
 
@@ -39,7 +40,7 @@ public:
 
     SitRep solve(bool verbose = true, bool guessing = true);
     int known() const;
-    void write(std::ostream& os, steady_clock_tp start, steady_clock_tp finish) const;
+    void write(std::ostream& os, steady_clock_tp_t const  start, steady_clock_tp_t const finish) const;
 
 private:
     enum struct State : int {
@@ -109,19 +110,19 @@ private:
 
     //This stores the output to be generated and converts into HTML.
     std::vector<std::tuple<std::string, std::vector<std::vector<State>>,
-        set_pair_t, steady_clock_tp, int, set_pair_t>> m_output;
+        set_pair_t, steady_clock_tp_t, int, set_pair_t>> m_output;
 
 
     std::mt19937 m_eng;
 
 
-    bool analyze_complete_islands(bool verbose);
-    bool analyze_single_liberty(bool verbose);
-    bool analyze_dual_liberties(bool verbose);
-    bool analyze_unreachable_cells(bool verbose);
-    bool analyze_potential_pools(bool verbose);
-    bool analyze_confinement(bool verbose, cache_map_t& cache);
-    bool analyze_hypotheticals(bool verbose);
+    bool analyze_complete_islands(bool const verbose);
+    bool analyze_single_liberty(bool const verbose);
+    bool analyze_dual_liberties(bool const verbose);
+    bool analyze_unreachable_cells(bool const verbose);
+    bool analyze_potential_pools(bool const verbose);
+    bool analyze_confinement(bool const verbose, cache_map_t& cache);
+    bool analyze_hypotheticals(bool const verbose);
 
     set_pair_t guessing_order();
     bool valid(int x, int y);
@@ -130,20 +131,21 @@ private:
     std::shared_ptr<Region>& region(int x, int y);
     std::shared_ptr<Region> const& region(int x, int y) const;
 
-    void print(std::string const& s, set_pair_t const& updated = {},
+    void print(std::string_view s, set_pair_t const& updated = {},
                int failed_guesses = 0, set_pair_t const& failed_coords = {});
 
-    bool process(bool verbose, set_pair_t const& mark_as_black,
-                 set_pair_t const& mark_as_white, std::string_view s);
+    bool process(bool const verbose, set_pair_t const& mark_as_black,
+                 set_pair_t const& mark_as_white, std::string_view s,
+                 int const failed_guesses = 0, set_pair_t const& failed_coords = {});
 
     template <typename F>
-    void for_valid_neighbors(int x, int y, F f) const;
+    void for_valid_neighbors(int x, int y, F&& f) const;
 
     void insert_valid_neighbors(set_pair_t& s, int x, int y) const;
     void insert_valid_unknown_neighbors(set_pair_t& s, int x, int y) const;
 
     void add_region(int x, int y);
-    void mark(int x, int y);
+    void mark(State const state, int x, int y);
     void fuse_regions(std::shared_ptr<Region> r1, std::shared_ptr<Region>r2);
 
     bool impossibly_big_white_region(int n) const;
@@ -156,7 +158,7 @@ private:
 
 };
 //Helper machinery for formatting time and print it to std::ostream.
-std::string format_time(Grid::steady_clock_tp const start, Grid::steady_clock_tp const finish);
+std::string format_time(Grid::steady_clock_tp_t const start, Grid::steady_clock_tp_t const finish);
 
 
 //Templates member functions definition.
@@ -171,25 +173,25 @@ void Grid::Region::unk_insert(It first, It last) {
 }
 
 //Extract neighbors that are orthogonal and not
-//off the grid bound.
+//off the  bound of the grid.
 template <typename F>
-void Grid::for_valid_neighbors(int x, int y, F f) const {
+void Grid::for_valid_neighbors(int x, int y, F&& f) const {
 
     if(x > 0) {
-        f(x - 1, y);
+        f(std::forward<int>(x - 1), std::forward<int>(y));
     }
     if(x + 1 < m_width) {
-        f(x + 1, y);
+        f(std::forward<int>(x + 1), std::forward<int>(y));
     }
     if(y > 0) {
-        f(x, y - 1);
+        f(std::forward<int>(x), std::forward<int>(y - 1));
     }
     if(y + 1 < m_height){
-        f(x, y + 1);
+        f(std::forward<int>(x), std::forward<int>(y + 1));
     }
 }
 
-}
+}//End of nb namespace
 
 #endif // GRID_HPP_INCLUDED
 
