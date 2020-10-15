@@ -42,15 +42,14 @@ class Grid {
         class Region {
 
         public:
-
             Region(State const state, set_pair_t const& unknowns, int const x, int const y);
-            bool is_white() const;
-            bool is_black() const;
-            bool is_numbered() const;
-            int its_number() const;
+            inline constexpr bool is_white() const noexcept {  return m_state == State::WHITE; }
+            inline constexpr bool is_black() const noexcept {  return m_state == State::BLACK; }
+            inline constexpr bool is_numbered() const noexcept { return static_cast<int>(m_state) > 0; }
+            int its_number() const noexcept;
             set_pair_t::const_iterator begin() const;
             set_pair_t::const_iterator end() const;
-            int size() const;
+            int size() const noexcept;
             bool contains(int const x, int const y) const;
 
             template <typename It>
@@ -62,7 +61,7 @@ class Grid {
             template <typename It>
             void unk_insert(It first, It last);
 
-            int unk_size() const;
+            int unk_size() const noexcept;
             void unk_erase(int const x, int const y);
 
 
@@ -76,9 +75,7 @@ class Grid {
             set_pair_t m_unknowns;
         };
         
-
         using cache_map_t = std::map<std::shared_ptr<Region>, set_pair_t>;
-
 
         int m_width;
         int m_height;
@@ -128,8 +125,8 @@ class Grid {
         void insert_valid_unknown_neighbors(set_pair_t& s, int x, int y) const;
 
         void add_region(int x, int y);
-        void mark(int x, int y);
-        void fuse_regions(std::shared_ptr<Region> r1, std::shared_ptr<Region>r2);
+        void mark(State const state, int x, int y);
+        void fuse_regions(std::shared_ptr<Region> r1, std::shared_ptr<Region> r2);
 
         bool impossibly_big_white_region(int n) const;
         bool unreachable(int x_root, int y_root, set_pair_t discovered = {});

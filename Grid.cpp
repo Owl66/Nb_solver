@@ -1,4 +1,5 @@
 #include "Grid.hpp"
+#include "Log.hpp"
 
 #include <sstream>
 #include <regex>
@@ -6,6 +7,7 @@
 #include <cassert>
 #include <array>
 #include <algorithm>
+#include <queue>
 
 namespace nb_s {
 
@@ -46,20 +48,17 @@ namespace nb_s {
             }
         }
 
-        if(vec_grid.size() != static_cast<size_t>(width * height)) {
-            throw std::runtime_error("Grid::Grid(): grid must contain  string must contain width * height spaces and numbers.");
-        }
-
+        assert(vec_grid.size() == static_cast<size_t>(width * height) && "Grid::Grid(): grid must contain  string must contain width * height spaces and numbers.");
+        
         for(auto x = 0; x < width; ++x) {
             for(auto y = 0; y < height; ++y) {
                 auto const n = vec_grid[x + y * width];
 
                 if(n > 0) {
+
                     auto const cell_state =  static_cast<int>(cell(x, y - 1));
-                    if(valid(x, y - 1) && cell_state > 0) {
-                        throw std::runtime_error("Grid::Grid() the vertical adjacent cells "
+                    assert (valid(x, y - 1) && cell_state > 0 && "Grid::Grid() the vertical adjacent cells "
                                                     "string cannot be numbered.");
-                    }
                 }
 
                 cell(x, y) = static_cast<State>(n);
@@ -137,19 +136,19 @@ namespace nb_s {
         m_coords.insert(std::make_pair(x, y));
     }
 
-    bool Grid::Region::is_white() const {
+    /*inline constexpr bool Grid::Region::is_white() const {
         return m_state == State::WHITE;
-    }
+    }*/
 
-    bool Grid::Region::is_black() const {
+    /*bool Grid::Region::is_black() const {
         return m_state == State::BLACK;
-    }
+    }*/
 
-    bool Grid::Region::is_numbered() const {
+    /*bool Grid::Region::is_numbered() const {
         return static_cast<int>(m_state) > 0;
-    }
+    }*/
 
-    int Grid::Region::its_number() const {
+    int Grid::Region::its_number() const noexcept {
         assert(is_numbered());
         return static_cast<int>(m_state);
     }
@@ -162,7 +161,7 @@ namespace nb_s {
         return m_coords.end();
     }
 
-    int Grid::Region::size() const {
+    int Grid::Region::size() const noexcept {
         return static_cast<int>(m_coords.size());
     }
 
@@ -178,7 +177,7 @@ namespace nb_s {
         return m_unknowns.end();
     }
 
-    int Grid::Region::unk_size() const {
+    int Grid::Region::unk_size() const noexcept {
         return static_cast<int>(m_unknowns.size());
     }
 
@@ -330,7 +329,7 @@ namespace nb_s {
                     verboten.insert(std::make_pair(x, y));
 
                     for(auto const& sp : m_regions) {
-                        auto const r = *sp;
+                        auto const& r = *sp;
                         if(confined(sp, cache, verboten)) {
                             if(r.is_black()) {
                                 mark_as_black.insert(std::make_pair(x, y));
@@ -344,6 +343,25 @@ namespace nb_s {
                 }
             }
         }
+        for(auto const& sp1 : m_regions) {
+            auto const& r = *sp1;
+            if(r.is_numbered() && r.size() < r.its_number()) {
+                for(auto u{r.unk_begin()}; u != r.unk_end(); ++u) {
+                    set_pair_t verboten;
+                    verboten.insert(*u);
+
+                    insert_valid_neighbors(verboten, u->first, u->second);
+
+                    for(auto const& sp2 : m_regions) {
+                        if(sp2 != sp1 && sp2->is_numbered() && confined(sp2, cache, verboten)) {
+                            mark_as_black.insert(*u);
+                        }
+                    }
+                    
+                }
+            } 
+        }
+        return process(verbose, mark_as_black, mark_as_white, "Confinment analysis succeeded.");
     }
 
     bool Grid::analyze_hypotheticals(bool verbose) {
@@ -378,25 +396,92 @@ namespace nb_s {
     bool Grid::process(bool verbose, set_pair_t const& mark_as_black, set_pair_t const& mark_as_white, std::string const& s) {
     }
 
-    void Grid::insert_valid_neighbors(set_pair_t& s, int x, int y) const {   
+    void Grid::insert_valid_neighbors(set_pair_t& s, int x, int y) const { 
+        for_valid_neighbors(x, y, [&](auto const a, auto const b) {
+            s.insert(std::make_pair(a, b));
+        });
     }
 
     void Grid::insert_valid_unknown_neighbors(set_pair_t& s, int x, int y) const {
+        for_valid_neighbors(x, y, [&](auto const a, auto const b) {
+            if(cell(a, b) == State::UNKNOWN) {
+                s.insert(std::make_pair(a, b));
+            }
+        });
     }
 
     void Grid::add_region(int x, int y) {
+        set_pair_t unknowns;
+        insert_valid_unknown_neighbors(unknowns, x, y);
+
+        auto r = std::make_shared<Grid::Region>(cell(x, y), unknowns, x, y);
+
+        region(x, y) = r;
+        m_regions.insert(r);
+
     }
 
-    void Grid::mark(int x, int y) {
+    void Grid::mark(State const state, int x, int y) {
+        assert((state == State::BLACK || state == State::WHITE) && "Expect state not to be State::Unknown.");
+
+        if(cell(x, y) != State::UNKNOWN) {
+            m_sitRep = SitRep::CONTRADICTION_FOUND;
+            LOG("Found contradiction.");
+            return;
+        }
+        cell(x, y) = state;
+        for(auto const& sp : m_regions) {
+            sp->unk_erase(x, y);
+        }
+        add_region(x, y); 
+
+        for_valid_neighbors(x, y, [this, x, y](auto const a, auto const b) {
+            fuse_regions((region(x, y)), region(a, b));
+        });
+
     }
 
-    void Grid::fuse_regions(std::shared_ptr<Region>r1, std::shared_ptr<Region>r2) {
+    void Grid::fuse_regions(std::shared_ptr<Region> r1, std::shared_ptr<Region> r2) {
+
+        if(!r1 || !r2 || r1 == r2) {
+            return;
+        }
+
+        if(r1->is_black() != r2->is_black()) {
+            return;
+        }
+
+        if(r1->is_numbered() && r2->is_numbered()) {
+            m_sitRep == SitRep::CONTRADICTION_FOUND;
+            return;
+        }
+        if(r2->size() > r1->size()) {
+            swap(r1, r2);
+        }
+        if(r2->is_numbered()) {
+            swap(r1, r2);
+        }
+        r1->insert(r2->begin(), r2->end());
+        r1->unk_insert(r2->unk_begin(), r2->unk_end());
+
+        for(auto const& [ x, y ] : *r2) {
+            region(x, y) = r1;
+        }
+        m_regions.erase(r2);
+
     }
 
     bool Grid::impossibly_big_white_region(int n) const { 
+        return std::none_of(begin(m_regions), end(m_regions), [=](auto const sp) {
+            sp->is_numbered() && sp->size() + n + 1 <= sp->its_number();
+        });
     }
 
     bool Grid::unreachable(int x_root, int y_root, set_pair_t discovered) {
+
+        if(cell(x_root, y_root) != State::UNKNOWN) {
+            return false;
+        }
     }
 
     bool Grid::confined(std::shared_ptr<Region>& r, cache_map_t& cache, set_pair_t const& verboten) {
