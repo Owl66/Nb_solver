@@ -130,7 +130,7 @@ class Grid {
 
         bool impossibly_big_white_region(int n) const;
         bool unreachable(int x_root, int y_root, set_pair_t discovered = {});
-        bool confined(std::shared_ptr<Region>& r, cache_map_t& cache, set_pair_t const& verboten = {});
+        bool confined(std::shared_ptr<Region> const& r, cache_map_t& cache, set_pair_t const& verboten = {});
 
         bool detect_contradictions(bool verbose, cache_map_t& cache);
 
