@@ -3,8 +3,7 @@
 
 #include <sstream>
 #include <regex>
-#include <string>
-#include <cassert>
+#include <assert.h>
 #include <array>
 #include <algorithm>
 #include <queue>
@@ -23,13 +22,18 @@ namespace nb_s {
         , m_string{std::move(s)} 
         , m_eng{1729} {
         
-        assert(width > 1 && height > 1 && "Width and height should be greater than 1. ");
+ 
+        assert(width > 1 && "Width and height should be greater than 1. ");
+        assert(height > 1 && "Width and height should be greater than 1.");
+        
 
         m_cells.resize(width, std::vector<std::pair<State, std::shared_ptr<Region>>>
                     (height, std::make_pair(State::UNKNOWN, std::shared_ptr<Region>())));
 
-        //Parse the string.
+        //For parsing the string.
         std::vector<int> vec_grid;
+        vec_grid.reserve(width * height);
+
         std::regex const rx{R"((\d+)|( )|(\n)|[^\d \n])"};
 
         for(std::sregex_iterator i {m_string.begin(), m_string.end(), rx}, end; i != end; ++i) {
@@ -45,28 +49,31 @@ namespace nb_s {
                 //do nothing.
 
             } else {
-                throw std::runtime_error("Grid::Grid(): Grid initialization contains invalid string.");
+                assert(false && "Grid::Grid(): Grid initialization contains invalid string.");
             }
         }
 
-        assert(vec_grid.size() == static_cast<size_t>(width * height) && "Grid::Grid(): grid must contain  string must contain width * height spaces and numbers.");
+        assert(vec_grid.size() == static_cast<size_t>(width * height) && "Grid::Grid(): "
+            " grid must contains width * height spaces and numbers[elements].");
         
         for(auto x = 0; x < width; ++x) {
             for(auto y = 0; y < height; ++y) {
-                auto const n = vec_grid[x + y * width];
+                auto n = vec_grid[x + y * width];
 
                 if(n > 0) {
+                    
+                    if (valid(x, y - 1) && static_cast<int>(cell(x, y - 1)) > 0) {
+                        throw std::runtime_error("Grid::Grid() the vertical adjacent cell "
+                            "cannot be numbered.");
+                    }
+                
 
-                    auto const cell_state =  static_cast<int>(cell(x, y - 1));
-                    assert (valid(x, y - 1) && cell_state < 0 && "Grid::Grid() the vertical adjacent cells "
-                                                    "string cannot be numbered.");
+                    cell(x, y) = static_cast<State>(n);
+                    add_region(x, y);
+
+                    //Get the total number of black cells in the grid.
+                    m_total_black -= n;
                 }
-
-                cell(x, y) = static_cast<State>(n);
-                add_region(x, y);
-
-                //Get the total number of black cells in the grid.
-                m_total_black -= n;
             }
         }
 
@@ -120,6 +127,80 @@ namespace nb_s {
     }
 
     void Grid::write(std::ostream& os, steady_clock_tp start, steady_clock_tp finish) const {
+        os << 
+        R"(<!DOCTYP HTML
+        html lang="en">
+        <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+        <style>
+        body{
+            font-family: Verdana, sans-serif;
+            line-height: 1.4;
+        }
+        table{
+            border: solid 3px #000000;
+            border-collapse: collapse;
+        }
+        td{
+            border: solid 1px #000000;
+            text-align: center;
+            width: 20px;
+            height: 20px;
+        }
+        td.unknown {background-color: #C0C0C0;}
+        td.white.new{background-color: #FFFF00;}
+        td.white.old{}
+        td.black.new{background-color: #008080;}
+        td.black.old{background-color: #808080;}
+        td.number{}
+        td.failed{border: solid 3px #000000;}
+        </style>
+        <title>Nurikabe</title>
+        </head>
+        <body>)";
+
+        std::chrono::steady_clock::time_point old_ctr = start;
+
+        for(const auto& [ s, v, updated, ctr, failed_guesses,failed_coords ]: m_output) {
+            os << s << " (" << format_time(old_ctr, ctr) << ")\n";
+
+            if(failed_guesses == 1) {
+                os << "<br/>1 guess failed.\n";
+            } else if(failed_guesses > 0) {
+                os << "<br/>" << failed_guesses << " guesses failed.\n";
+            }
+
+            old_ctr = ctr;
+
+            os << "<table>\n";
+
+            for(auto y = 0; y < m_height; ++y) {
+                os << "<tr>";
+                for(auto x = 0; x < m_width; ++x) {
+                    os << "<td class=\"";
+                    os << (updated.find(std::make_pair(x, y)) != updated.end() ? "new" : "old");
+
+                    if(failed_coords.find(std::make_pair(x, y)) != failed_coords.end()) {
+                        os << "failed ";
+                    }
+
+                    switch(v[x][y]) {
+                        case State::UNKNOWN:    os << "unknown\"";       break;
+                        case State::WHITE:      os << "white\"";         break;
+                        case State::BLACK:      os << "black\"";         break;
+                        default: 
+                            os << "number\">" << static_cast<int>(v[x][y]);      break;
+                    }
+                    os << "</td>";
+                }
+                os << "</tr>\n";
+            }
+            os << "</table><br/>\n";
+        }
+        os << "Total time taken: " << format_time(start, finish) << '\n';
+        os << 
+            " </body>\n"
+            "</html>\n";
     }
 
     Grid::Region::Region(State const state, set_pair_t const& unknowns, int const x, int const y)
@@ -137,17 +218,6 @@ namespace nb_s {
         m_coords.insert(std::make_pair(x, y));
     }
 
-    /*inline constexpr bool Grid::Region::is_white() const {
-        return m_state == State::WHITE;
-    }*/
-
-    /*bool Grid::Region::is_black() const {
-        return m_state == State::BLACK;
-    }*/
-
-    /*bool Grid::Region::is_numbered() const {
-        return static_cast<int>(m_state) > 0;
-    }*/
 
     int Grid::Region::its_number() const noexcept {
         assert(is_numbered());
@@ -166,7 +236,7 @@ namespace nb_s {
         return static_cast<int>(m_coords.size());
     }
 
-    bool Grid::Region::contains(int const x, int const y) const {
+    bool Grid::Region::contains(int const x, int const y) const noexcept {
         return m_coords.find(std::make_pair(x, y)) != m_coords.end();
     }
 
@@ -182,7 +252,7 @@ namespace nb_s {
         return static_cast<int>(m_unknowns.size());
     }
 
-    void Grid::Region::unk_erase(int const x, int const y) {
+    void Grid::Region::unk_erase(int const x, int const y) noexcept {
         m_unknowns.erase(std::make_pair(x, y));
     }
 
@@ -366,9 +436,81 @@ namespace nb_s {
     }
 
     bool Grid::analyze_hypotheticals(bool verbose) {
+        set_pair_t mark_as_black;
+        set_pair_t mark_as_white;
+        const std::vector<std::pair<int, int>> v = guessing_order();
+        int failed_guesses = 0;
+        set_pair_t failed_coords;
+
+        for(auto const& [ x, y ] : v) {
+            for(auto i = 0; i < 2; ++i) {
+                State const color = i == 0 ? State::BLACK : State::WHITE;
+                auto& mark_as_same = i == 0 ? mark_as_black : mark_as_white;
+                auto& mark_as_diff = i == 0 ? mark_as_white : mark_as_black;
+
+                Grid other(*this);
+                other.mark(color, x, y);
+
+                SitRep sr = SitRep::KEEP_GOING;
+
+                while(sr == SitRep::KEEP_GOING) {
+                    sr = other.solve(false, false);
+                }
+                if(sr == SitRep::CONTRADICTION_FOUND) {
+                    mark_as_diff.insert(std::make_pair(x, y));
+                    return process(verbose, mark_as_black, mark_as_white, "Hypothetical contradiction!",
+                    failed_guesses, failed_coords);
+                    LOG("Hypothetical Contradiction found!");
+                }
+                if(sr == SitRep::SOLUTION_FOUND) {
+                    mark_as_same.insert(std::make_pair(x, y));
+                    return process(verbose, mark_as_black, mark_as_white, "Hypothetical Solution!", 
+                    failed_guesses, failed_coords);
+                    LOG("Hypothetical solution found!");
+                }
+                ++failed_guesses;
+                failed_coords.insert(std::make_pair(x, y));
+            }
+            return false;
+        }
     }
 
-    Grid::set_pair_t Grid::guessing_order() {
+    std::vector<std::pair<int, int>> Grid::guessing_order() {
+        std::vector<std::tuple<int, int, int>> x_y_manhattan;
+        std::vector<std::pair<int, int>> white_cells;
+
+        for(auto x = 0; x < m_width; ++x){
+            for(auto y = 0; y < m_height; ++y) {
+
+                switch(cell(x, y)) {
+                    case State::UNKNOWN:
+                        x_y_manhattan.push_back(std::make_tuple(x, y, m_width + m_height));
+                        break;
+                    case State::WHITE:
+                        white_cells.push_back(std::make_pair(x, y));
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+        std::shuffle(x_y_manhattan.begin(), x_y_manhattan.end(), m_eng);
+
+        for(auto& [ x1, y1, manhattan ] : x_y_manhattan) {
+            for(auto& [ x2, y2 ] : white_cells) {
+                manhattan = std::min(manhattan, std::abs(x1 - x2) + std::abs(y1 - y2));
+            }
+        }
+        std::stable_sort(x_y_manhattan.begin(), x_y_manhattan.end(), [](auto const& l, auto const& r) {
+            return std::get<2>(l) < std::get<2>(r);
+        });
+        std::vector<std::pair<int, int>> ret;
+
+        std::transform(x_y_manhattan.begin(), x_y_manhattan.end(), ret.begin(), [](auto const& l){
+            return std::make_pair(std::get<0>(l), std::get<1>(l));
+        });
+
+        return ret;
     }
 
     bool Grid::valid(int x, int y) {
@@ -393,17 +535,18 @@ namespace nb_s {
 
     void Grid::print(std::string const& s, set_pair_t const& updated, int failed_guesses, set_pair_t const& failed_coords) {
 
-        std::vector<std::vector<State>> v(m_width, vector<State>(m_height));
+        std::vector<std::vector<State>> v(m_width, std::vector<State>(m_height));
 
         for(auto x = 0; x < m_width; ++x) {
             for(auto y = 0; y < m_height; ++y) {
                 v[x][y] = cell(x, y);
             }
         }
-        m_output.push_back(std::make_tuple(s, v, updated, steady_clock::now(), failed_guesses, failed_coords));
+        m_output.push_back(std::make_tuple(s, v, updated, std::chrono::steady_clock::now(), failed_guesses, failed_coords));
     }
 
-    bool Grid::process(bool verbose, set_pair_t const& mark_as_black, set_pair_t const& mark_as_white, std::string const& s) {
+    bool Grid::process(bool verbose, set_pair_t const& mark_as_black, set_pair_t const& mark_as_white, std::string const& s,
+        int const failed_guesses, set_pair_t const& failed_coords) {
 
         if(mark_as_black.empty() && mark_as_white.empty()) {
             return false;
@@ -420,8 +563,8 @@ namespace nb_s {
 
             std::string t = s;
             if(m_sitRep == SitRep::CONTRADICTION_FOUND) {
-                t += "Contradiction Found attempt to fuse two numbered region or mark marked cell";
-                LOG("[WARNING]Contradiction mark known cell or attempt to fuse numbered regions");
+                t += "Contradiction Found attempt to fuse two numbered region or mark marked cell.";
+                LOG("[WARNING] Contradiction: mark known cell or attempt to fuse numbered regions.");
             }
             print(t, updated, failed_guesses, failed_coords);
         }
@@ -454,11 +597,11 @@ namespace nb_s {
     }
 
     void Grid::mark(State const state, int x, int y) {
-        assert((state == State::BLACK || state == State::WHITE) && "Expect state not to be State::Unknown.");
+        assert((state == State::BLACK || state == State::WHITE) && "Expect state not to be Unknown.");
 
         if(cell(x, y) != State::UNKNOWN) {
             m_sitRep = SitRep::CONTRADICTION_FOUND;
-            LOG("Found contradiction");
+            LOG("Found contradiction!");
             return;
         }
         cell(x, y) = state;
@@ -484,7 +627,7 @@ namespace nb_s {
         }
 
         if(r1->is_numbered() && r2->is_numbered()) {
-            m_sitRep == SitRep::CONTRADICTION_FOUND;
+            m_sitRep = SitRep::CONTRADICTION_FOUND;
             return;
         }
         if(r2->size() > r1->size()) {
@@ -504,8 +647,8 @@ namespace nb_s {
     }
 
     bool Grid::impossibly_big_white_region(int n) const { 
-        return std::none_of(begin(m_regions), end(m_regions), [=](auto const sp) {
-            sp->is_numbered() && sp->size() + n + 1 <= sp->its_number();
+        return std::none_of(m_regions.begin(), m_regions.end(), [n](std::shared_ptr<Region> const& sp) {
+            return sp->is_numbered() && sp->size() + n + 1 <= sp->its_number();
         });
     }
 
@@ -588,122 +731,133 @@ namespace nb_s {
 
     bool Grid::confined(std::shared_ptr<Region> const& r, cache_map_t& cache, set_pair_t const& verboten) {
 
-        if(!verboten.empty()) {
+        if (!verboten.empty()) {
             auto const i = cache.find(r);
 
-            if(i == cache.end()) {
+            if (i == cache.end()) {
                 return false;
             }
 
             auto const& consumed = i->second;
-            if(std::none_of(verboten.begin(), verboten.end(), [&](auto const& a) {
+            if (std::none_of(verboten.begin(), verboten.end(), [&](auto const& p) {
                 return consumed.find(p) != consumed.end();
-            })) {
+                })) {
 
                 return false;
             }
-            std::vector<Flag> flags(m_width * m_height, NONE);
+        }
+        std::vector<Flag> flags(m_width * m_height, NONE);
 
-            for(auto i{r->unk_begin()}; i != r->unk_end(); ++i) {
-                auto const& [ x, y ] = *i;
-                flags[x + y * m_width] = OPEN;
-            }
-
-            for(auto const& [ x, y ] : *r) {
-                flags[x + y * m_width] = CLOSED;
-            }
-
-            int closed_size = r->size();
-
-            for(auto const& [ x, y ] : verboten) {
-                flags[x + y * m_width] = VERBOTEN;
-            }
-
-
+        for(auto i{r->unk_begin()}; i != r->unk_end(); ++i) {
+            auto const& [ x, y ] = *i;
+            flags[x + y * m_width] = OPEN;
         }
 
-        while((r->is_black() && closed_size < m_total_black)
+        for(auto const& [ x, y ] : *r) {
+            flags[x + y * m_width] = CLOSED;
+        }
+
+        int closed_size = r->size();
+
+        for(auto const& [ x, y ] : verboten) {
+            flags[x + y * m_width] = VERBOTEN;
+        }
+
+        while ((r->is_black() && closed_size < m_total_black)
             || r->is_white()
-            ||(r->is_numbered() && closed_size < r->is_numbered())) {
+            || (r->is_numbered() && closed_size < r->is_numbered())) {
 
-                auto const iter = find(flags.begin(), flags.end(), OPEN);
-                if(iter == flags.end()) {
-                    break;
+            auto const iter = std::find(flags.begin(), flags.end(), OPEN);
+            if (iter == flags.end()) {
+                break;
+            }
+            *iter = NONE;
+            size_t index = static_cast<size_t>(iter - flags.begin());
+
+            const std::pair<int, int> p(index % m_width, index / m_width);
+            const auto& area = region(p.first, p.second);
+            if (r->is_black()) {
+                if (!area) {
+
                 }
-                *iter = NONE;
-                size_t index = static_cast<size_t>(iter - flags.begin());
+                else if (area->is_black()) {
 
-                const pair<int, int> p(index % m_width, index / m_width);
-                const auto& area = region(p.first, p.second);
-                if(r->is_black()) {
-                    if(!area) {
+                }
+                else {
+                    continue;
+                }
 
-                    } else if(area->is_black()) {
+            }
+            else if (r->is_white()) {
+                if (!area) {
 
-                    } else {
-                        continue;
-                    }
-                } else if(r->is_white()) {
-                    if(!area) {
+                }
+                else if (area->is_black()) {
+                    continue;
+                }
+                else if (area->is_white()) {
 
-                    } else if(area->is_black()) {
-                        continue;
-                    } else if(area->is_white()) {
+                }
+                else {
+                    return false;
+                }
+            }
+            else {
+                if (!area) {
 
-                    } else {
-                        return false;
-                    }
-                } else {
-                    if(!area) {
+                    bool rejected = false;
 
-                        bool rejected = false;
-
-                        for_valid_neighbors(p.first, p.second, [&](auto const a, auto cont b) {
-                            auto const& other = region(a, b);
-                            if(othe && other->is_numbered() && other != r) {
-                                rejected = true;
-                            }
-                        });
-                        
-                        if(rejected) {
-                            continue;
+                    for_valid_neighbors(p.first, p.second, [&](auto const a, auto const b) {
+                        auto const& other = region(a, b);
+                        if (other && other->is_numbered() && other != r) {
+                            rejected = true;
                         }
-                    } else if(area->is_black()) {
+                        });
+
+                    if (rejected) {
                         continue;
-                    }else if(area->is_white()) {
-                        
-                    } else {
-                        throw std::logic_error("Grid::confined()- i was confused and thought "
-                        "two numbered region would be adjacent");
                     }
                 }
-            }
-        }
-        if(!area) {
-            flags[p.first + p.second * m_width] = CLOSED;
-            ++closed_size;
-
-            for_valid_neighbors(p.first, p.second, [&](auto const a, auto const b) {
-                Flag& flag = flags[a + b * m_width];
-                if(f == NONE) {
-                    f = OPEN;
+                else if (area->is_black()) {
+                    continue;
                 }
-            });
-            
-            if(verboten.empty()) {
-                cache[r].insert(p);
-            }
-        } else {
-            for(auto const& [ x, y ] : *area) {
-                flags[x + y * m_width] = CLOSED;
-            }
-            closed_size += area->size();
-            for(auto i = area->unk_begin(); i != area->unk.end(); ++i) {
-                auto const& [ x, y ] = *i;
-                flag& f = flags[x + y * m_width];
+                else if (area->is_white()) {
 
-                if(f == NONE) {
-                    f = OPEN;
+                }
+                else {
+                    assert(false && "Grid::confined()- i was confused and thought "
+                        "two numbered region would be adjacent");
+                }
+            }
+
+
+            if (!area) {
+                flags[p.first + p.second * m_width] = CLOSED;
+                ++closed_size;
+
+                for_valid_neighbors(p.first, p.second, [&](auto const a, auto const b) {
+                    Flag& f = flags[a + b * m_width];
+                    if (f == NONE) {
+                        f = OPEN;
+                    }
+                    });
+
+                if (verboten.empty()) {
+                    cache[r].insert(p);
+                }
+            }
+            else {
+                for (auto const& [x, y] : *area) {
+                    flags[x + y * m_width] = CLOSED;
+                }
+                closed_size += area->size();
+                for (auto i = area->unk_begin(); i != area->unk_end(); ++i) {
+                    auto const& [x, y] = *i;
+                    Flag& f = flags[x + y * m_width];
+
+                    if (f == NONE) {
+                        f = OPEN;
+                    }
                 }
             }
         }
@@ -716,12 +870,12 @@ namespace nb_s {
     bool Grid::detect_contradictions(bool verbose, cache_map_t& cache) {
 
         auto uh_oh = [&](std::string const& s)->bool {
-            if(verbose) {
+            if (verbose) {
                 print(s);
             }
-            m_SitRep = SitRep::CONTRADICTION_FOUND;
+            m_sitRep = SitRep::CONTRADICTION_FOUND;
             return true;
-        }
+        };
         for(auto x = 0; x < m_width - 1; ++x) {
             for(auto y = 0; y < m_height - 1; ++y) {
                 if(cell(x, y) == State::BLACK
@@ -747,7 +901,9 @@ namespace nb_s {
                 return  uh_oh("Contradiction! Gigantic region detected.");
                 LOG("[WARNING]Gigantic region detected");
             }
+
             (r.is_black() ? black_cells : white_cells) += r.size();
+
             if(confined(sp, cache)) {
                 return uh_oh("Contradiction! confined region found.");
                 LOG("[WARNING]Confined region");
@@ -784,5 +940,25 @@ namespace nb_s {
                     << " seconds";
         }
         return ostream.str();
+    }
+
+    Grid::Grid(Grid const& other) 
+        : m_width(other.m_width),
+        m_height(other.m_height),
+        m_total_black(other.m_total_black),
+        m_cells(other.m_cells),
+        m_regions(),
+        m_sitRep(other.m_sitRep),
+        m_eng(other.m_eng) {
+
+            for(auto const& sp : other.m_regions) {
+                m_regions.insert(std::make_shared<Region>(*sp));
+            }
+
+            for(auto const& sp : m_regions) {
+                for(auto const& [ x, y ] : *sp) {
+                    region(x, y) = sp;
+                }
+            }
     }
 }// end of namespace nb_s

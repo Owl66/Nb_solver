@@ -10,6 +10,7 @@
 #include <random>
 #include <set>
 #include <map>
+#include <string>
 
 namespace nb_s {
 
@@ -50,7 +51,7 @@ class Grid {
             set_pair_t::const_iterator begin() const;
             set_pair_t::const_iterator end() const;
             int size() const noexcept;
-            bool contains(int const x, int const y) const;
+            bool contains(int const x, int const y) const noexcept;
 
             template <typename It>
             void insert(It first, It last);
@@ -62,7 +63,7 @@ class Grid {
             void unk_insert(It first, It last);
 
             int unk_size() const noexcept;
-            void unk_erase(int const x, int const y);
+            void unk_erase(int const x, int const y) noexcept;
 
 
         private:
@@ -96,6 +97,8 @@ class Grid {
         set_pair_t, steady_clock_tp, int, set_pair_t>> m_output;
         std::mt19937 m_eng;
         std::string m_string;
+
+        Grid(Grid const& other);
     
         bool analyze_complete_islands(bool  verbose);
         bool analyze_single_liberty(bool verbose);
@@ -105,7 +108,7 @@ class Grid {
         bool analyze_confinement(bool verbose, cache_map_t& cache);
         bool analyze_hypotheticals(bool verbose);
 
-        set_pair_t guessing_order();
+        std::vector<std::pair<int, int>> guessing_order();
         bool valid(int x, int y);
         State& cell(int x, int y);
         State const& cell(int x, int y) const;
@@ -113,10 +116,11 @@ class Grid {
         std::shared_ptr<Region> const& region(int x, int y) const;
 
         void print(std::string const& s, set_pair_t const& updated = {},
-                int failed_guesses = 0, set_pair_t const& failed_coords = {});
+        int failed_guesses = 0, set_pair_t const& failed_coords = {});
 
         bool process(bool verbose, set_pair_t const& mark_as_black,
-                    set_pair_t const& mark_as_white, std::string const& s);
+        set_pair_t const& mark_as_white, std::string const& s, int const failed_guesses = 0, 
+        set_pair_t const& failed_coords = {});
 
         template <typename F>
         void for_valid_neighbors(int x, int y, F f) const;
@@ -161,7 +165,7 @@ class Grid {
             f(x, y - 1);
         }
         if(y + 1 < m_height) {
-            f(y + 1, x);
+            f(x, y + 1);
         }
     }
 }
