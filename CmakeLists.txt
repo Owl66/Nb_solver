@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(NurikabePuzzle_solver)
+project(NurikabePuzzle_solver LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED)
 
-add_executable()
+set(sources main.cpp Grid.cpp Grid.hpp Log.cpp Log.hpp )
+add_executable(nb_solver ${sources})
