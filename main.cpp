@@ -20,25 +20,49 @@ int main()
 		{
 
 
-			"wikipedia_hard", 10, 9,
+			 "nikoli_10", 36, 20,
 
-			"2        2\n"
+			"           4            2           \n"
 
-			"      2   \n"
+			"3 4          2   7         8      2 \n"
 
-			" 2  7     \n"
+			"    7      5   1   8 5   1  2  4   2\n"
 
-			"          \n"
+			"6    4       3          2 2         \n"
 
-			"      3 3 \n"
+			"           6                   4    \n"
 
-			"  2    3  \n"
+			"    2             1  2           2  \n"
 
-			"2  4      \n"
+			"        1       4     4    4  1     \n"
 
-			"          \n"
+			" 1                  3            4 4\n"
 
-			" 1    2 4 \n"
+			"     2     4  4            4        \n"
+
+			"       5  3                   2 4   \n"
+
+			" 5 1              1    3   8   2    \n"
+
+			"     1   2                          \n"
+
+			"2            2 5           4     2 1\n"
+
+			"                             2      \n"
+
+			"1  2   4  7   18   1            1   1\n"
+
+			"                     2   8 4        \n"
+
+			"    3           18     1          4  \n"
+
+			"                 4                4 \n"
+
+			"      3 1   4      4    2    4   4  \n"
+
+			"6      1  3                 4       \n"
+
+
 		},
     } };
 
@@ -46,12 +70,9 @@ int main()
 		for (auto const& puzzle : puzzles) {
 			auto const start = std::chrono::steady_clock::now();
 			Grid g(puzzle.w, puzzle.h, puzzle.s);
+			LOG("[INFO] we are working on it...");
 			while(g.solve() == Grid::SitRep::KEEP_GOING) { }
-			/*
-			* The below function must run in parallel with solve function.
-			LOG("Puzzle is solved...");
-			*/
-
+			
 
 			auto const finish = std::chrono::steady_clock::now();
 
@@ -61,7 +82,7 @@ int main()
 			cout << puzzle.name << std::endl;
 			LOG(" Puzzle took " + format_time(start, finish));
 
-			const int k = g.known();
+			const int k = g.knownElements();
 			const int cells = puzzle.w * puzzle.h;
 			cout << k << "/" << cells << " (" << k * 100.0 / cells << "%) solved" << endl;
 

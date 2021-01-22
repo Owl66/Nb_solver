@@ -2,16 +2,20 @@
 #include "Log.hpp"
 
 #include <sstream>
-#include <regex>
 #include <assert.h>
 #include <array>
 #include <algorithm>
 #include <queue>
 #include <cstddef>
 
+
+
 namespace nb_s {
 
-    Grid::Grid(int const width, int const height, std::string s)
+    std::regex const Grid::rx{ R"((\d+)|( )|(\n)|[^\d \n])" };
+    
+
+    Grid::Grid(int const width, int const height, std::string_view s)
         : m_width{width}
         , m_height{height}
         , m_total_black{width * height}
@@ -19,26 +23,26 @@ namespace nb_s {
         , m_sitRep{SitRep::KEEP_GOING}
         , m_regions{}
         , m_output{}
-        , m_string{std::move(s)} 
         , m_eng{1729} {
         
  
-        assert(width > 1 && "Width and height should be greater than 1. ");
-        assert(height > 1 && "Width and height should be greater than 1.");
-        
+        if(width < 1) {
+            throw std::runtime_error("The width should be greater than 1.");
+        }
+        if (height < 1) {
+            throw std::runtime_error("The height should be greater than 1.");
+        }
 
         m_cells.resize(width, std::vector<std::pair<State, std::shared_ptr<Region>>>
-                    (height, std::make_pair(State::UNKNOWN, std::shared_ptr<Region>())));
+                            (height, std::make_pair(State::UNKNOWN, std::shared_ptr<Region>())));
 
-        //For parsing the string.
         std::vector<int> vec_grid;
         vec_grid.reserve(width * height);
 
-        std::regex const rx{R"((\d+)|( )|(\n)|[^\d \n])"};
+        char const* c = s.data();
+        for(std::cregex_iterator i {c, c + std::strlen(c), rx}, end; i != end; i++) {
 
-        for(std::sregex_iterator i {m_string.begin(), m_string.end(), rx}, end; i != end; ++i) {
-
-            auto const& m = *i;
+            std::cmatch const& m = *i;
             if(m[1].matched) {
                 vec_grid.push_back(std::stoi(m[1]));
 
@@ -49,16 +53,16 @@ namespace nb_s {
                 //do nothing.
 
             } else {
-                assert(false && "Grid::Grid(): Grid initialization contains invalid string.");
+                throw std::runtime_error("Grid::Grid(): Grid initialization contains invalid string.");
             }
         }
 
-        assert(vec_grid.size() == static_cast<size_t>(width * height) && "Grid::Grid(): "
-            " grid must contains width * height spaces and numbers[elements].");
+        if(vec_grid.size() != static_cast<size_t>(width * height)) 
+            throw std::runtime_error("grid must contains \"width * height\" spaces and numbers[elements].");
         
-        for(auto x = 0; x < width; ++x) {
-            for(auto y = 0; y < height; ++y) {
-                auto n = vec_grid[x + y * width];
+        for(auto x = 0; x < width; x++) {
+            for(auto y = 0; y < height; y++) {
+                int const n = vec_grid[x + y * width];
 
                 if(n > 0) {
                     
@@ -84,7 +88,7 @@ namespace nb_s {
 
         cache_map_t cache;
 
-        if(known() == m_width * m_height) {
+        if(knownElements() == m_width * m_height) {
             if(detect_contradictions(verbose, cache)) {
                 return SitRep::CONTRADICTION_FOUND;
             }
@@ -105,7 +109,8 @@ namespace nb_s {
             || (guessing && analyze_hypotheticals(verbose))) {
 
                 return m_sitRep;
-            }
+        }
+
         if(verbose) {
             print("I'm stumped!");
         }
@@ -113,13 +118,13 @@ namespace nb_s {
         return SitRep::CANNOT_PROCEED;
     }
 
-    int Grid::known() const {
+    int Grid::knownElements() const {
         auto ret = 0;
         
-        for(auto x{0}; x < m_width; ++x){
-            for(auto y{0}; y < m_height; ++y){
+        for(auto x = 0; x < m_width; x++){
+            for(auto y = 0; y < m_height; y++){
                 if(cell(x, y) != State::UNKNOWN){
-                    ++ret;
+                    ret++;
                 }
             }
         }
@@ -174,20 +179,20 @@ namespace nb_s {
 
             os << "<table>\n";
 
-            for(auto y = 0; y < m_height; ++y) {
+            for(int y = 0; y < m_height; y++) {
                 os << "<tr>";
-                for(auto x = 0; x < m_width; ++x) {
+                for(int x = 0; x < m_width; x++) {
                     os << "<td class=\"";
-                    os << (updated.find(std::make_pair(x, y)) != updated.end() ? "new" : "old");
+                    os << (updated.find(std::make_pair(x, y)) != updated.end() ? "new " : "old ");
 
                     if(failed_coords.find(std::make_pair(x, y)) != failed_coords.end()) {
                         os << "failed ";
                     }
 
                     switch(v[x][y]) {
-                        case State::UNKNOWN:    os << "unknown\"";       break;
-                        case State::WHITE:      os << "white\"";         break;
-                        case State::BLACK:      os << "black\"";         break;
+                        case State::UNKNOWN:    os << "unknown\">";       break;
+                        case State::WHITE:      os << "white\">.";         break;
+                        case State::BLACK:      os << "black\">#";         break;
                         default: 
                             os << "number\">" << static_cast<int>(v[x][y]);      break;
                     }
@@ -202,7 +207,7 @@ namespace nb_s {
             " </body>\n"
             "</html>\n";
     }
-
+#pragma region
     Grid::Region::Region(State const state, set_pair_t const& unknowns, int const x, int const y)
         : m_state{state}
 
@@ -255,6 +260,8 @@ namespace nb_s {
     void Grid::Region::unk_erase(int const x, int const y) noexcept {
         m_unknowns.erase(std::make_pair(x, y));
     }
+#pragma endregion
+
 
     bool Grid::analyze_complete_islands(bool verbose) {
 
@@ -267,7 +274,8 @@ namespace nb_s {
                 mark_as_black.insert(r.unk_begin(), r.unk_end());
             }
         }
-        return process(verbose, mark_as_black, mark_as_white, "Found the complete region.");
+      
+        return process(verbose, mark_as_black, mark_as_white, "Found the complete region.\n");
     }
 
     bool Grid::analyze_single_liberty(bool verbose) {
@@ -290,7 +298,9 @@ namespace nb_s {
             }
 
         }
+        
         return process(verbose, mark_as_black, mark_as_white, "Expand partial region with single liberty. ");
+
     }
 
     bool Grid::analyze_dual_liberties(bool verbose) {
@@ -298,29 +308,32 @@ namespace nb_s {
         set_pair_t mark_as_white;
 
         for(auto const& region: m_regions){
-            auto const& r = *region;
+            Region const& r = *region;
             if(r.is_numbered() && r.size() == r.its_number() - 1 && r.unk_size() == 2){
-                auto const x1 = r.unk_begin()->first;
-                auto const y1 = r.unk_begin()->second;
+                int const x1 = r.unk_begin()->first;
+                int const y1 = r.unk_begin()->second;
 
-                auto const next  = std::next(r.unk_begin());
-                auto const x2 = next->first;
-                auto const y2 = next->second;
+                int const x2 = std::next(r.unk_begin())->first;
+                int const y2 = std::next(r.unk_begin())->second;
 
-                auto p = std::pair<int, int>{};
                 if(std::abs(x1 - x2) == 1 && std::abs(y1 - y2) == 1) {
-                    if(r.contains(x2, y1)) {
-                        p = std::make_pair(x1, y2);
+                    std::pair<int, int> p;
+
+                    if(r.contains(x1, y2)) {
+                        p = std::make_pair(x2, y1);
 
                     }else {
-                        p = std::make_pair(x2, y1);
+                        p = std::make_pair(x1, y2);
+                    }
+
+                    if (cell(p.first, p.second) == State::UNKNOWN) {
+                        mark_as_black.insert(p);
                     }
                 }
-                if(cell(p.first, p.second) == State::UNKNOWN) {
-                    mark_as_black.insert(p);
-                }
+               
             }
         }
+        
         return process(verbose, mark_as_black, mark_as_white, " N - 1 islands whith two completely diagonal liberties");
     }
 
@@ -329,13 +342,14 @@ namespace nb_s {
         set_pair_t mark_as_black;
         set_pair_t mark_as_white;
 
-        for(auto x{0}; x < m_width; ++x) {
-            for(auto y{0}; y < m_height; ++y) {
+        for(auto x = 0; x < m_width; x++) {
+            for(auto y = 0; y < m_height; y++) {
                 if(unreachable(x, y)) {
                     mark_as_black.insert(std::make_pair(x, y));
                 }
             }
         }
+       
         return process(verbose, mark_as_black, mark_as_white, "Unreachable cell blackened. ");
 
     }
@@ -344,8 +358,8 @@ namespace nb_s {
         set_pair_t mark_as_black;
         set_pair_t mark_as_white;
 
-        for(auto x{0}; x < m_width - 1; ++x) {
-            for(auto y{0}; y < m_height - 1; ++y) {
+        for(auto x = 0; x < m_width - 1; x++) {
+            for(auto y = 0; y < m_height - 1; y++) {
 
                 struct XY {
                     int x;
@@ -356,12 +370,15 @@ namespace nb_s {
                    { x, y, cell(x, y) },
                    { x + 1, y, cell(x + 1, y) },
                    { x, y + 1, cell(x, y + 1) },
-                   { x + 1, y, cell(x + 1, y) }
+                   { x + 1, y + 1, cell(x + 1, y + 1) }
                 } };
+
                 static_assert(State::BLACK > State::UNKNOWN, " Black should be greater than state::unknown.");
+
                 std::sort(begin(quadrant), end(quadrant), [](auto const lhs, auto const rhs){
                     return lhs.state < rhs.state;
                 });
+
                 if(quadrant[0].state == State::UNKNOWN
                 && quadrant[1].state == State::BLACK
                 && quadrant[2].state == State::BLACK
@@ -369,23 +386,25 @@ namespace nb_s {
 
                     mark_as_white.insert(std::make_pair(quadrant[0].x, quadrant[0].y));
                 
-                }else if(quadrant[0].state == State::UNKNOWN
-                    && quadrant[1].state == State::UNKNOWN
-                    && quadrant[2].state == State::BLACK
-                    && quadrant[3].state == State::BLACK) {
+                } else if(quadrant[0].state == State::UNKNOWN
+                      && quadrant[1].state == State::UNKNOWN
+                      && quadrant[2].state == State::BLACK
+                      && quadrant[3].state == State::BLACK) {
                     
-                    for(auto i{0}; i < 2; ++i) {
-                        set_pair_t imagine_black;
-                        imagine_black.insert(std::make_pair(quadrant[0].x, quadrant[0].y));
-                        if(unreachable(quadrant[1].x, quadrant[1].y, imagine_black)) {
-                            mark_as_white.insert(std::make_pair(quadrant[0].x, quadrant[0].y));
-                        }
+                            for(auto i = 0; i < 2; i++) {
+                                set_pair_t imagine_black;
+                                imagine_black.insert(std::make_pair(quadrant[0].x, quadrant[0].y));
 
-                        std::swap(quadrant[0], quadrant[1]);
-                    }
-                }
+                                if(unreachable(quadrant[1].x, quadrant[1].y, imagine_black)) {
+                                    mark_as_white.insert(std::make_pair(quadrant[0].x, quadrant[0].y));
+                                }
+
+                                std::swap(quadrant[0], quadrant[1]);
+                            }
+                       }
             }
         }
+
         return process(verbose, mark_as_black, mark_as_white, " Analysis the potential pool. ");
     }
 
@@ -393,8 +412,8 @@ namespace nb_s {
         set_pair_t mark_as_black;
         set_pair_t mark_as_white;
         
-        for(auto x{0}; x < m_width; ++x) {
-            for(auto y{0}; y < m_height; ++y) {
+        for(auto x = 0; x < m_width; x++) {
+            for(auto y = 0; y < m_height; y++) {
                 if(cell(x, y) == State::UNKNOWN) {
                     set_pair_t verboten;
                     verboten.insert(std::make_pair(x, y));
@@ -432,6 +451,7 @@ namespace nb_s {
                 }
             } 
         }
+       
         return process(verbose, mark_as_black, mark_as_white, "Confinment analysis succeeded.");
     }
 
@@ -443,7 +463,7 @@ namespace nb_s {
         set_pair_t failed_coords;
 
         for(auto const& [ x, y ] : v) {
-            for(auto i = 0; i < 2; ++i) {
+            for (auto i = 0; i < 2; i++) {
                 State const color = i == 0 ? State::BLACK : State::WHITE;
                 auto& mark_as_same = i == 0 ? mark_as_black : mark_as_white;
                 auto& mark_as_diff = i == 0 ? mark_as_white : mark_as_black;
@@ -453,26 +473,28 @@ namespace nb_s {
 
                 SitRep sr = SitRep::KEEP_GOING;
 
-                while(sr == SitRep::KEEP_GOING) {
+                while (sr == SitRep::KEEP_GOING) {
                     sr = other.solve(false, false);
                 }
-                if(sr == SitRep::CONTRADICTION_FOUND) {
+                if (sr == SitRep::CONTRADICTION_FOUND) {
                     mark_as_diff.insert(std::make_pair(x, y));
+                    LOG("[WARNING] 481 Hypothetical Contradiction found!");
                     return process(verbose, mark_as_black, mark_as_white, "Hypothetical contradiction!",
-                    failed_guesses, failed_coords);
-                    LOG("Hypothetical Contradiction found!");
+                        failed_guesses, failed_coords);
+
                 }
-                if(sr == SitRep::SOLUTION_FOUND) {
+                if (sr == SitRep::SOLUTION_FOUND) {
                     mark_as_same.insert(std::make_pair(x, y));
-                    return process(verbose, mark_as_black, mark_as_white, "Hypothetical Solution!", 
-                    failed_guesses, failed_coords);
-                    LOG("Hypothetical solution found!");
+                    LOG("[INFO] 477 Hypothetical solution found!");
+                    return process(verbose, mark_as_black, mark_as_white, "Hypothetical Solution!",
+                        failed_guesses, failed_coords);
+
                 }
-                ++failed_guesses;
+                failed_guesses++;
                 failed_coords.insert(std::make_pair(x, y));
             }
-            return false;
         }
+        return false;
     }
 
     std::vector<std::pair<int, int>> Grid::guessing_order() {
@@ -504,7 +526,7 @@ namespace nb_s {
         std::stable_sort(x_y_manhattan.begin(), x_y_manhattan.end(), [](auto const& l, auto const& r) {
             return std::get<2>(l) < std::get<2>(r);
         });
-        std::vector<std::pair<int, int>> ret;
+        std::vector<std::pair<int, int>> ret(x_y_manhattan.size());
 
         std::transform(x_y_manhattan.begin(), x_y_manhattan.end(), ret.begin(), [](auto const& l){
             return std::make_pair(std::get<0>(l), std::get<1>(l));
@@ -533,20 +555,22 @@ namespace nb_s {
         return m_cells[x][y].second;
     }
 
-    void Grid::print(std::string const& s, set_pair_t const& updated, int failed_guesses, set_pair_t const& failed_coords) {
+    void Grid::print(std::string_view s, set_pair_t const& updated, int failed_guesses, set_pair_t const& failed_coords) {
 
         std::vector<std::vector<State>> v(m_width, std::vector<State>(m_height));
 
-        for(auto x = 0; x < m_width; ++x) {
-            for(auto y = 0; y < m_height; ++y) {
+        for(auto x = 0; x < m_width; x++) {
+            for(auto y = 0; y < m_height; y++) {
                 v[x][y] = cell(x, y);
             }
         }
         m_output.push_back(std::make_tuple(s, v, updated, std::chrono::steady_clock::now(), failed_guesses, failed_coords));
     }
 
-    bool Grid::process(bool verbose, set_pair_t const& mark_as_black, set_pair_t const& mark_as_white, std::string const& s,
+    bool Grid::process(bool verbose, set_pair_t const& mark_as_black, set_pair_t const& mark_as_white, std::string_view s,
         int const failed_guesses, set_pair_t const& failed_coords) {
+
+        assert(s.data());
 
         if(mark_as_black.empty() && mark_as_white.empty()) {
             return false;
@@ -554,17 +578,17 @@ namespace nb_s {
         for(auto const& [ x, y ] : mark_as_black){
             mark(State::BLACK, x, y);
         }
-        for(auto const& [ x, y ] : mark_as_black){
+        for(auto const& [ x, y ] : mark_as_white){
             mark(State::WHITE, x, y);
         }
         if(verbose) {
             set_pair_t updated(mark_as_black);
             updated.insert(mark_as_white.begin(), mark_as_white.end());
 
-            std::string t = s;
+            std::string_view t = s;
             if(m_sitRep == SitRep::CONTRADICTION_FOUND) {
-                t += "Contradiction Found attempt to fuse two numbered region or mark marked cell.";
-                LOG("[WARNING] Contradiction: mark known cell or attempt to fuse numbered regions.");
+                t  = std::string(t) + std::string("Contradiction Found attempt to fuse two numbered region or mark marked cell.");
+                LOG("[WARNING] 591 Contradiction: mark known cell or attempt to fuse numbered regions.");
             }
             print(t, updated, failed_guesses, failed_coords);
         }
@@ -578,6 +602,7 @@ namespace nb_s {
     }
 
     void Grid::insert_valid_unknown_neighbors(set_pair_t& s, int x, int y) const {
+
         for_valid_neighbors(x, y, [&](auto const a, auto const b) {
             if(cell(a, b) == State::UNKNOWN) {
                 s.insert(std::make_pair(a, b));
@@ -597,17 +622,22 @@ namespace nb_s {
     }
 
     void Grid::mark(State const state, int x, int y) {
-        assert((state == State::BLACK || state == State::WHITE) && "Expect state not to be Unknown.");
+        if(state != State::BLACK && state != State::WHITE) {
+            assert(false);
+        }
 
         if(cell(x, y) != State::UNKNOWN) {
             m_sitRep = SitRep::CONTRADICTION_FOUND;
-            LOG("Found contradiction!");
+            LOG("[WARNING] 622 Found contradiction!");
             return;
         }
+
         cell(x, y) = state;
+
         for(auto const& sp : m_regions) {
             sp->unk_erase(x, y);
         }
+
         add_region(x, y); 
 
         for_valid_neighbors(x, y, [this, x, y](auto const a, auto const b) {
@@ -621,13 +651,11 @@ namespace nb_s {
         if(!r1 || !r2 || r1 == r2) {
             return;
         }
-
-        if(r1->is_black() != r2->is_black()) {
-            return;
-        }
-
         if(r1->is_numbered() && r2->is_numbered()) {
             m_sitRep = SitRep::CONTRADICTION_FOUND;
+            return;
+        }
+        if (r1->is_black() != r2->is_black()) {
             return;
         }
         if(r2->size() > r1->size()) {
@@ -652,6 +680,8 @@ namespace nb_s {
         });
     }
 
+
+    //this should be parallelised .
     bool Grid::unreachable(int x_root, int y_root, set_pair_t discovered) {
 
         if(cell(x_root, y_root) != State::UNKNOWN) {
@@ -670,39 +700,69 @@ namespace nb_s {
 
             for_valid_neighbors(x_curr, y_curr, [&](auto const a, auto const b){
                 std::shared_ptr<Region> const& r = region(a, b);
-                LOG("[] The neighbors are obtained in line 499.");
                 if(r && r->is_white()){
+                    LOG("[INFO] 705 collecting the white neighbors.");
                     white_region.insert(r);
-
+                    
                 } else if (r && r->is_numbered()) {
+                    LOG("[INFO] 705 collecting the numbered neighbors.");
                     numbered_region.insert(r);
                 }
             });
 
-            size_t size{0};
+            size_t size = 0;
+            std::mutex mt;
+            /*
+            for (auto const& sp : white_region) {
+                   size += sp->size();
+                 
+            }
+            for (auto const& sp : numbered_region) {
+                   size += sp->size();
+                   
+            }*/
+            
+            std::thread t([&]() {
+                for (auto const& sp : white_region) {
+                    mt.lock();
+                    size += sp->size();
+                    mt.unlock();
+                    LOG("THREAD T");
+                }
+                
+            });
 
-            for(auto const& sp : white_region) {
-                size += sp->size();
-            }
-            for(auto const& sp : numbered_region) {
-                size += sp->size();
-            }
-            if(numbered_region.size() > 1) {
-                LOG("[WARNING] Area of two numbered region found!");
+            std::thread t1([&]() {
+                for (auto const& sp : numbered_region) {
+                    mt.lock();
+                    size += sp->size();
+                    mt.unlock();
+                    LOG("THREAD T1");
+
+                }
+            });
+
+            t.join();
+            t1.join();
+            
+            if (numbered_region.size() > 1) {
+                LOG("[INFO] size > 1");
                 continue;
             }
             if(numbered_region.size() == 1) {
                 int const num = (*numbered_region.begin())->its_number();
                 if(n_curr + size <= num) {
+                    LOG("[INFO] size <= 1");
                     return false;
 
                 } else {
-                    continue;
+                    LOG("[INFO] size > 1");
+                   continue;
                 }
             } 
             if(!white_region.empty()) {
                 if(impossibly_big_white_region(n_curr + size)) {
-                    LOG("[WARNING] impossibly big white region found!");
+                    LOG("[INFO] 764 impossibly big white region");
                     continue;
 
                 } else {
@@ -711,9 +771,11 @@ namespace nb_s {
             }
             for_valid_neighbors(x_curr, y_curr, [&](auto const a, auto const b){
                 if(cell(a, b) == State::UNKNOWN && discovered.insert(std::make_pair(a, b)).second) {
+                    LOG("[INFO] 773 the new neighbors are taken");
                     q.push(std::make_tuple(a, b, n_curr + 1));
                 }
             });
+          
 
         }
         return true;
@@ -862,9 +924,7 @@ namespace nb_s {
             }
         }
 
-        return(r->is_black() && closed_size < m_total_black)
-            || r->is_white() 
-            || (r->is_numbered() && closed_size < r->is_numbered());
+        return(r->is_black() && closed_size < m_total_black) || r->is_white() || (r->is_numbered() && closed_size < r->is_numbered());
     }
 
     bool Grid::detect_contradictions(bool verbose, cache_map_t& cache) {
@@ -883,8 +943,9 @@ namespace nb_s {
                 && cell(x, y + 1) == State::BLACK
                 && cell(x + 1, y + 1) == State::BLACK) {
 
+                    LOG("[WARNING] 919 Contradiction pool detected.");
                     return uh_oh("Contradiction found! Pool detected.");
-                    LOG("[WARNING]Contradiction pool detected.");
+                    
                 
 
                 }
@@ -898,47 +959,40 @@ namespace nb_s {
             if((r.is_white() && impossibly_big_white_region(r.size()))
                || (r.is_numbered() && r.size() > r.its_number())) {
 
+                LOG("[WARNING] 928 Gigantic region detected");
                 return  uh_oh("Contradiction! Gigantic region detected.");
-                LOG("[WARNING]Gigantic region detected");
+                
             }
 
             (r.is_black() ? black_cells : white_cells) += r.size();
 
             if(confined(sp, cache)) {
+                LOG("[WARNING] 936 Confined region");
                 return uh_oh("Contradiction! confined region found.");
-                LOG("[WARNING]Confined region");
+               
 
             }
             if(black_cells > m_total_black) {
+                LOG("[WARNING] 942 Too many black cells");
                 return uh_oh("Contradiction! Too many black cells.");
-                LOG("[WARNING]Too many black cells");
+                
             }
             if(white_cells > m_width * m_height - m_total_black) {
+                LOG("[WARNING] 918 Many numbered/white cells found");
                 return uh_oh("Contradiction! Too many white/numbered cells found.");
-                LOG("[WARNING]Many numbered/white cells found");
+                
             }
-            return false;
-
+            
         }
+        return false;
     }
 
     std::string format_time(Grid::steady_clock_tp const start, Grid::steady_clock_tp const finish) {
-
         std::ostringstream ostream;
         using namespace std::literals::chrono_literals;
-
-        if(finish - start < 1s) {
-            ostream << std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(finish - start).count()
-                    << " milliseconds" ;
-
-        } else if(finish - start < 1ms) {
-            ostream << std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(finish - start).count()
-                    << " microseconds";
-
-        } else {
-            ostream << std::chrono::duration_cast<std::chrono::duration<double>>(finish - start).count()
-                    << " seconds";
-        }
+        using namespace std::chrono;
+        
+        ostream << duration_cast<milliseconds>(finish - start).count() << " milliseconds";
         return ostream.str();
     }
 
