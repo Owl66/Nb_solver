@@ -5,7 +5,6 @@
 #include "Grid.hpp"
 
 using namespace std;
-using namespace nb_s;
 
 int main()
 {
@@ -70,7 +69,7 @@ int main()
 		for (auto const& puzzle : puzzles) {
 			auto const start = std::chrono::steady_clock::now();
 			Grid g(puzzle.w, puzzle.h, puzzle.s);
-			LOG("[INFO] we are working on it...");
+			Logger::lg.msg("[INFO] we are working on it...");
 			while(g.solve() == Grid::SitRep::KEEP_GOING) { }
 			
 
@@ -80,7 +79,7 @@ int main()
 			g.write(f, start, finish);
 
 			cout << puzzle.name << std::endl;
-			LOG(" Puzzle took " + format_time(start, finish));
+			Logger::lg.msg(" Puzzle took " + format_time(start, finish));
 
 			const int k = g.knownElements();
 			const int cells = puzzle.w * puzzle.h;

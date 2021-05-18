@@ -2,12 +2,8 @@
 #include <iostream>
 
 Logger::Logger() {
+    std::lock_guard lock{m_mutex};
     m_outfile.open("Log.txt");
-}
-
-Logger& Logger::instance() {
-    static Logger lg;
-    return lg;
 }
 
 void Logger::msg(std::string_view message) {
@@ -19,3 +15,4 @@ void Logger::msg(std::string_view message) {
 Logger::~Logger() {
     m_outfile.close();
 }
+Logger Logger::lg;
